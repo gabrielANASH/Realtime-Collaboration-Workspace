@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  name            String?
+  passwordHash    String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  mentionKey      String?        @unique
+  activityLogs    ActivityLog[]  @relation("ActivityActor")
+  comments        Comment[]
+  documents       Document[]     @relation("DocumentAuthor")
+  documentEdits   DocumentEdit[]
+  memberships     Membership[]
+  notifications   Notification[]
+  passwordResetTokens PasswordResetToken[]
+  refreshTokens       RefreshToken[]
+  ownedWorkspaces     Workspace[]    @relation("WorkspaceOwner")
+}
+
+model Workspace {
+  id            String         @id @default(uuid())
+  name          String
+  ownerId       String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  description   String?
+  activityLogs  ActivityLog[]
+  documents     Document[]
+  members       Membership[]
+  notifications Notification[]
+  owner         User           @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+
+  @@index([ownerId])
+}
+
+model Membership {
+  id          String        @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole @default(member)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model Comment {
+  id         String    @id @default(uuid())
+  documentId String
+  userId     String
+  content    String
+  parentId   String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  document   Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  parent     Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies    Comment[] @relation("CommentReplies")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, createdAt])
+}
+
+model Document {
+  id          String         @id @default(uuid())
+  workspaceId String
+  authorId    String
+  title       String
+  content     String         @default("")
+  version     Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  comments    Comment[]
+  author      User           @relation("DocumentAuthor", fields: [authorId], references: [id])
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  edits       DocumentEdit[]
+
+  @@index([workspaceId])
+  @@index([authorId])
+}
+
+model DocumentEdit {
+  id         String   @id @default(uuid())
+  documentId String
+  userId     String
+  operation  Json
+  version    Int
+  createdAt  DateTime @default(now())
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, version])
+  @@index([userId])
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String
+  workspaceId String?
+  type        NotificationType
+  title       String
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model ActivityLog {
+  id          String    @id @default(uuid())
+  workspaceId String
+  actorId     String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  actor       User?     @relation("ActivityActor", fields: [actorId], references: [id])
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+enum WorkspaceRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum NotificationType {
+  workspace_invite
+  mention
+  document_update
+  system
+}
